@@ -1,7 +1,15 @@
+mod local;
+
 use std::env;
+
+use anyhow::Result;
+
+const FOLDER: &str = ".mid";
 
 fn main() {
     let args = env::args().collect::<Vec<String>>();
+
+    let repo = local::Repo::load();
 
     if args.len() == 1 {
         println!("Status");
