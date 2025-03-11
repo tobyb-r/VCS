@@ -3,7 +3,8 @@ use serde::{Deserialize, Serialize};
 use super::{DirHash, ObjectState};
 
 #[derive(Hash, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
-pub struct ComHash([u8; 32]);
+#[serde(transparent)]
+pub struct ComHash(#[serde(with = "hex::serde")] pub [u8; 32]);
 
 pub struct Commit {
     msg: String,

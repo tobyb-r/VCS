@@ -1,28 +1,43 @@
+#![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_imports)]
 mod local;
+use local::*;
 
 use std::env;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 
 const DIR: &str = ".mid";
 
 fn main() {
     let args = env::args().collect::<Vec<String>>();
 
-    let repo = local::Repo::load();
+    let repo;
 
     if args.len() == 1 {
         println!("Status");
+        let repo = local::Repo::load().expect("Failed to load repo");
+        println!(
+            "JSON :\n{}",
+            serde_json::to_string_pretty(&repo).expect("Failed to serialize repo")
+        );
+        return;
     }
 
     let command = &args[1];
 
+    if command == "init" {
+        repo = Repo::init().expect("Failed to initalize repo");
+        repo.save().expect("Failed to save repo");
+        return;
+    }
+
+    let repo = local::Repo::load().expect("Failed to load repo");
+
     match command.as_str() {
         "diff" => {
             println!("Difference of two commits");
-        }
-        "init" => {
-            println!("Initializing repository");
         }
         "stage" => {
             println!("Staging file");
@@ -63,7 +78,9 @@ fn main() {
             println!("Help");
         }
         other => {
-            panic!("Unkown command {}", other);
+            panic!("Unknown command {other}");
         }
     }
+
+    repo.save().expect("Failed to save changes to repository")
 }

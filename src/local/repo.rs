@@ -1,8 +1,10 @@
-use std::cell::UnsafeCell;
+use core::net;
 use std::collections::HashMap;
+use std::fs::{DirBuilder, File};
 use std::pin::Pin;
+use std::{cell::UnsafeCell, fs};
 
-use anyhow::Result;
+use anyhow::{bail, Result};
 use serde::{Deserialize, Serialize};
 use serde_json;
 
@@ -12,9 +14,8 @@ use super::{Branch, ComHash, Commit, DirHash, DirObject, FileHash, FileObject};
 
 #[derive(Serialize, Deserialize)]
 pub struct Repo {
-    name: String,
-    remote: String,
-    branches: HashMap<String, Branch>,
+    pub remote: Option<String>,
+    pub branches: HashMap<String, Branch>,
 
     // lazily loaded store of objects
     #[serde(skip)]
@@ -25,8 +26,8 @@ pub struct Repo {
     dirs: UnsafeCell<HashMap<DirHash, Pin<Box<DirObject>>>>,
 
     // list of paths
-    stage: Option<Vec<String>>,
-    head: HeadState,
+    pub stage: Option<Vec<String>>,
+    pub head: HeadState,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -37,28 +38,65 @@ pub enum HeadState {
 
 impl Repo {
     pub fn load() -> Result<Self> {
-        unimplemented!();
+        let file = File::open(".mid/repo.json")?;
+        Ok(serde_json::from_reader(file)?)
+    }
+
+    pub fn init() -> Result<Self> {
+        if fs::exists(DIR)? {
+            bail!("Already in directory");
+        }
+
+        let mut db = DirBuilder::new();
+        db.recursive(true);
+        // db.create(".mid")?;
+        // db.create(".mid/objects")?;
+        db.create(".mid/objects/commits")?;
+        db.create(".mid/objects/files")?;
+        db.create(".mid/objects/dirs")?;
+
+        let main = Branch::new(ComHash([0; 32]));
+        let mut branches = HashMap::new();
+        branches.insert("main".to_string(), main);
+
+        Ok(Self {
+            remote: None,
+            branches,
+            commits: UnsafeCell::new(HashMap::new()),
+            files: UnsafeCell::new(HashMap::new()),
+            dirs: UnsafeCell::new(HashMap::new()),
+            head: HeadState::Branch("main".to_string()),
+            stage: None,
+        })
     }
 
     pub fn get_dir(&self, hash: &DirHash) -> &DirObject {
+        // SAFETY: access is unique because we never references to the hashmap
+        // SAFETY: references will stay valid because of pin
         unsafe { &mut *self.dirs.get() }
             .entry(*hash)
             .or_insert_with_key(|hash| Box::pin(DirObject::from_hash(hash)))
     }
 
     pub fn get_file(&self, hash: &FileHash) -> &FileObject {
+        // SAFETY: access is unique because we never references to the hashmap
+        // SAFETY: references will stay valid because of pin
         unsafe { &mut *self.files.get() }
             .entry(*hash)
             .or_insert_with_key(|hash| Box::pin(FileObject::from_hash(hash)))
     }
 
     pub fn get_commit(&self, hash: &ComHash) -> &Commit {
+        // SAFETY: access is unique because we never references to the hashmap
+        // SAFETY: references will stay valid because of pin
         unsafe { &mut *self.commits.get() }
             .entry(*hash)
             .or_insert_with_key(|hash| Box::pin(Commit::from_hash(hash)))
     }
 
     pub fn save(&self) -> Result<()> {
-        unimplemented!();
+        let file = File::create(".mid/repo.json")?;
+        serde_json::to_writer_pretty(file, self)?;
+        Ok(())
     }
 }

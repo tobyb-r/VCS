@@ -5,10 +5,12 @@ use serde::{Deserialize, Serialize};
 use super::ObjectState;
 
 #[derive(Hash, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
-pub struct DirHash([u8; 32]);
+#[serde(transparent)]
+pub struct DirHash(#[serde(with = "hex::serde")] pub [u8; 32]);
 
 #[derive(Hash, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
-pub struct FileHash([u8; 32]);
+#[serde(transparent)]
+pub struct FileHash(#[serde(with = "hex::serde")] pub [u8; 32]);
 
 #[derive(Serialize, Deserialize)]
 pub enum Object {

@@ -4,5 +4,11 @@ use super::ComHash;
 
 #[derive(Serialize, Deserialize)]
 pub struct Branch {
-    head: ComHash,
+    pub head: ComHash,
+}
+
+impl Branch {
+    pub fn new(head: ComHash) -> Self {
+        Self { head: head }
+    }
 }
