@@ -3,21 +3,25 @@ use std::collections::HashMap;
 use std::pin::Pin;
 
 use anyhow::Result;
-use serde;
+use serde::{Deserialize, Serialize};
 use serde_json;
 
-use crate::FOLDER;
+use crate::DIR;
 
 use super::{Branch, ComHash, Commit, DirHash, DirObject, FileHash, FileObject};
 
+#[derive(Serialize, Deserialize)]
 pub struct Repo {
     name: String,
     remote: String,
     branches: HashMap<String, Branch>,
 
     // lazily loaded store of objects
+    #[serde(skip)]
     commits: UnsafeCell<HashMap<ComHash, Pin<Box<Commit>>>>,
+    #[serde(skip)]
     files: UnsafeCell<HashMap<FileHash, Pin<Box<FileObject>>>>,
+    #[serde(skip)]
     dirs: UnsafeCell<HashMap<DirHash, Pin<Box<DirObject>>>>,
 
     // list of paths
@@ -25,6 +29,7 @@ pub struct Repo {
     head: HeadState,
 }
 
+#[derive(Serialize, Deserialize)]
 pub enum HeadState {
     Branch(String),
     Commit(ComHash),

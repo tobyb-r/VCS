@@ -1,13 +1,16 @@
 use std::collections::HashMap;
 
+use serde::{Deserialize, Serialize};
+
 use super::ObjectState;
 
-#[derive(Hash, PartialEq, Eq, Clone, Copy)]
+#[derive(Hash, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
 pub struct DirHash([u8; 32]);
 
-#[derive(Hash, PartialEq, Eq, Clone, Copy)]
+#[derive(Hash, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
 pub struct FileHash([u8; 32]);
 
+#[derive(Serialize, Deserialize)]
 pub enum Object {
     File(FileHash),
     Dir(DirHash),

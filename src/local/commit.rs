@@ -1,8 +1,8 @@
-use std::collections::HashMap;
+use serde::{Deserialize, Serialize};
 
 use super::{DirHash, ObjectState};
 
-#[derive(Hash, PartialEq, Eq, Clone, Copy)]
+#[derive(Hash, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
 pub struct ComHash([u8; 32]);
 
 pub struct Commit {

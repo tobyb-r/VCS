@@ -4,7 +4,7 @@ use std::env;
 
 use anyhow::Result;
 
-const FOLDER: &str = ".mid";
+const DIR: &str = ".mid";
 
 fn main() {
     let args = env::args().collect::<Vec<String>>();
