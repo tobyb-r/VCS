@@ -1,14 +1,49 @@
 use std::collections::HashMap;
 
-pub struct ObjHash([u8; 16]);
+use super::ObjectState;
+
+#[derive(Hash, PartialEq, Eq, Clone, Copy)]
+pub struct DirHash([u8; 32]);
+
+#[derive(Hash, PartialEq, Eq, Clone, Copy)]
+pub struct FileHash([u8; 32]);
 
 pub enum Object {
-    File(FileObj),
-    Dir(DirObj),
+    File(FileHash),
+    Dir(DirHash),
 }
 
-pub struct FileObj {}
+pub struct FileObject {
+    refcount: i32,
+    state: ObjectState,
+}
 
-pub struct DirObj {
-    objs: HashMap<String, ObjHash>,
+pub struct DirObject {
+    objs: HashMap<String, Object>,
+    refcount: i32,
+    state: ObjectState,
+}
+
+impl FileObject {
+    // load object from the repo directory using its hash
+    pub fn from_hash(hash: &FileHash) -> Self {
+        unimplemented!()
+    }
+
+    // hash object
+    pub fn hash(&self) -> FileHash {
+        unimplemented!()
+    }
+}
+
+impl DirObject {
+    // load object from the repo directory using its hash
+    pub fn from_hash(hash: &DirHash) -> Self {
+        unimplemented!()
+    }
+
+    // hash object
+    pub fn hash(&self) -> DirHash {
+        unimplemented!()
+    }
 }
