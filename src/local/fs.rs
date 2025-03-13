@@ -7,11 +7,11 @@ use super::ObjectState;
 
 #[derive(Hash, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct DirHash(#[serde(with = "hex::serde")] pub [u8; 32]);
+pub struct DirHash(#[serde(with = "hex::serde")] pub [u8; 16]);
 
 #[derive(Hash, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct FileHash(#[serde(with = "hex::serde")] pub [u8; 32]);
+pub struct FileHash(#[serde(with = "hex::serde")] pub [u8; 16]);
 
 #[derive(Serialize, Deserialize)]
 pub enum Object {
