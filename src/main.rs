@@ -33,7 +33,7 @@ fn main() {
         return;
     }
 
-    let repo = local::Repo::load().expect("Failed to load repo");
+    let mut repo = local::Repo::load().expect("Failed to load repo");
 
     match command.as_str() {
         "diff" => {
@@ -44,6 +44,8 @@ fn main() {
             // <path>+
         }
         "commit" => {
+            // <msg>
+            repo.commit();
             println!("Commiting changes");
         }
         "branch" => {

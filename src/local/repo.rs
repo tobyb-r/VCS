@@ -51,6 +51,34 @@ impl Repo {
         Ok(repo)
     }
 
+    pub fn init() -> Result<Self> {
+        if fs::exists(DIR)? {
+            bail!("Already in directory");
+        }
+
+        let mut db = DirBuilder::new();
+        db.recursive(true);
+        // db.create(".mid")?;
+        // db.create(".mid/objects")?;
+        db.create(".mid/objects/commits")?;
+        db.create(".mid/objects/files")?;
+        db.create(".mid/objects/dirs")?;
+
+        let main = Branch::new(ComHash([0; 20]));
+        let mut branches = HashMap::new();
+        branches.insert("main".to_string(), main);
+
+        Ok(Self {
+            remote: None,
+            branches,
+            commits: UnsafeCell::new(HashMap::new()),
+            files: UnsafeCell::new(HashMap::new()),
+            dirs: UnsafeCell::new(HashMap::new()),
+            head: HeadState::Branch("main".to_string()),
+            stage: None,
+        })
+    }
+
     pub fn get_dir(&self, hash: &DirHash) -> &DirObject {
         // SAFETY: access is unique because we never leak references to the hashmap
         // SAFETY: references will stay valid because of pin
@@ -75,32 +103,24 @@ impl Repo {
             .or_insert_with_key(|hash| Box::pin(Commit::from_hash(hash)))
     }
 
-    pub fn init() -> Result<Self> {
-        if fs::exists(DIR)? {
-            bail!("Already in directory");
+    pub fn get_head(&self) -> ComHash {
+        match &self.head {
+            HeadState::Branch(name) => self.branches[name].head,
+            HeadState::Commit(hash) => *hash,
         }
+    }
 
-        let mut db = DirBuilder::new();
-        db.recursive(true);
-        // db.create(".mid")?;
-        // db.create(".mid/objects")?;
-        db.create(".mid/objects/commits")?;
-        db.create(".mid/objects/files")?;
-        db.create(".mid/objects/dirs")?;
+    pub fn commit(&mut self) {
+        let new = Commit::new("new".to_string(), self.get_head(), DirHash([0; 20]));
 
-        let main = Branch::new(ComHash([0; 16]));
-        let mut branches = HashMap::new();
-        branches.insert("main".to_string(), main);
-
-        Ok(Self {
-            remote: None,
-            branches,
-            commits: UnsafeCell::new(HashMap::new()),
-            files: UnsafeCell::new(HashMap::new()),
-            dirs: UnsafeCell::new(HashMap::new()),
-            head: HeadState::Branch("main".to_string()),
-            stage: None,
-        })
+        match &self.head {
+            HeadState::Branch(branch) => {
+                self.branches.get_mut(branch).unwrap().head = new.hash();
+            }
+            HeadState::Commit(comhash) => {
+                self.head = HeadState::Commit(new.hash());
+            }
+        }
     }
 
     pub fn save(&self) -> Result<()> {

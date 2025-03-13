@@ -18,6 +18,15 @@ pub struct Commit {
 }
 
 impl Commit {
+    pub fn new(msg: String, prev: ComHash, objs: DirHash) -> Self {
+        return Self {
+            msg,
+            prev,
+            objs,
+            state: ObjectState::New,
+        };
+    }
+
     // load object from the repo directory using its hash
     pub fn from_hash(hash: &ComHash) -> Self {
         unimplemented!()
