@@ -5,6 +5,7 @@ use std::pin::Pin;
 use std::{cell::UnsafeCell, fs};
 
 use anyhow::{bail, Result};
+use hex::ToHex;
 use serde::{Deserialize, Serialize};
 use serde_json;
 
@@ -121,11 +122,27 @@ impl Repo {
                 self.head = HeadState::Commit(new.hash());
             }
         }
+
+        self.commits.get_mut().insert(new.hash(), Box::pin(new));
     }
 
     pub fn save(&self) -> Result<()> {
         let file = File::create(".mid/repo.json")?;
         serde_json::to_writer_pretty(file, self)?;
+
+        // write objects
+        // SAFETY: access is unique
+        for (key, value) in unsafe { &*self.commits.get() }.iter() {
+            if let ObjectState::New = value.state {
+                let com_file = File::create(format!(
+                    ".mid/objects/commits/{}.json",
+                    key.0.encode_hex::<String>()
+                ))?;
+
+                serde_json::to_writer_pretty(com_file, &*value.as_ref())?;
+            }
+        }
+
         Ok(())
     }
 }

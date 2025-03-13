@@ -10,11 +10,11 @@ pub struct ComHash(#[serde(with = "hex::serde")] pub [u8; 20]);
 
 #[derive(Serialize, Deserialize)]
 pub struct Commit {
-    msg: String,
-    prev: ComHash,
-    objs: DirHash,
+    pub msg: String,
+    pub prev: ComHash,
+    pub objs: DirHash,
     #[serde(skip)]
-    state: ObjectState,
+    pub state: ObjectState,
 }
 
 impl Commit {
