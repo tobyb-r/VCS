@@ -8,10 +8,12 @@ use super::{DirHash, ObjectState};
 #[serde(transparent)]
 pub struct ComHash(#[serde(with = "hex::serde")] pub [u8; 16]);
 
+#[derive(Serialize, Deserialize)]
 pub struct Commit {
     msg: String,
     prev: ComHash,
     objs: DirHash,
+    #[serde(skip)]
     state: ObjectState,
 }
 

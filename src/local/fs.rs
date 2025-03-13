@@ -19,14 +19,35 @@ pub enum Object {
     Dir(DirHash),
 }
 
-pub struct FileObject {
-    refcount: i32,
-    state: ObjectState,
+// state of a file in the file system
+// used when saving our changes to the .mid folder
+#[derive(Default)]
+pub enum FileState {
+    // existing object doesnt need to be changed
+    #[default] // for serde(skip)
+    Existing,
+    // new object that needs to be stored
+    // field contains path that the file needs to be stored from
+    New(String),
+    // info about object changed and needs to be stored in memory
+    // rn the only thing that can change is the refcount
+    Updated,
+    // object has been marked to be deleted
+    Deleted,
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct FileObject {
+    refcount: i32,
+    #[serde(skip)]
+    state: FileState,
+}
+
+#[derive(Serialize, Deserialize)]
 pub struct DirObject {
     objs: HashMap<String, Object>,
     refcount: i32,
+    #[serde(skip)]
     state: ObjectState,
 }
 

@@ -42,6 +42,30 @@ impl Repo {
         Ok(serde_json::from_reader(file)?)
     }
 
+    pub fn get_dir(&self, hash: &DirHash) -> &DirObject {
+        // SAFETY: access is unique because we never leak references to the hashmap
+        // SAFETY: references will stay valid because of pin
+        unsafe { &mut *self.dirs.get() }
+            .entry(*hash)
+            .or_insert_with_key(|hash| Box::pin(DirObject::from_hash(hash)))
+    }
+
+    pub fn get_file(&self, hash: &FileHash) -> &FileObject {
+        // SAFETY: access is unique because we never leak references to the hashmap
+        // SAFETY: references will stay valid because of pin
+        unsafe { &mut *self.files.get() }
+            .entry(*hash)
+            .or_insert_with_key(|hash| Box::pin(FileObject::from_hash(hash)))
+    }
+
+    pub fn get_commit(&self, hash: &ComHash) -> &Commit {
+        // SAFETY: access is unique because we never leak references to the hashmap
+        // SAFETY: references will stay valid because of pin
+        unsafe { &mut *self.commits.get() }
+            .entry(*hash)
+            .or_insert_with_key(|hash| Box::pin(Commit::from_hash(hash)))
+    }
+
     pub fn init() -> Result<Self> {
         if fs::exists(DIR)? {
             bail!("Already in directory");
@@ -68,30 +92,6 @@ impl Repo {
             head: HeadState::Branch("main".to_string()),
             stage: None,
         })
-    }
-
-    pub fn get_dir(&self, hash: &DirHash) -> &DirObject {
-        // SAFETY: access is unique because we never leak references to the hashmap
-        // SAFETY: references will stay valid because of pin
-        unsafe { &mut *self.dirs.get() }
-            .entry(*hash)
-            .or_insert_with_key(|hash| Box::pin(DirObject::from_hash(hash)))
-    }
-
-    pub fn get_file(&self, hash: &FileHash) -> &FileObject {
-        // SAFETY: access is unique because we never leak references to the hashmap
-        // SAFETY: references will stay valid because of pin
-        unsafe { &mut *self.files.get() }
-            .entry(*hash)
-            .or_insert_with_key(|hash| Box::pin(FileObject::from_hash(hash)))
-    }
-
-    pub fn get_commit(&self, hash: &ComHash) -> &Commit {
-        // SAFETY: access is unique because we never leak references to the hashmap
-        // SAFETY: references will stay valid because of pin
-        unsafe { &mut *self.commits.get() }
-            .entry(*hash)
-            .or_insert_with_key(|hash| Box::pin(Commit::from_hash(hash)))
     }
 
     pub fn save(&self) -> Result<()> {
