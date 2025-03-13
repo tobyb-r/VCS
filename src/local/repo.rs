@@ -10,7 +10,7 @@ use serde_json;
 
 use crate::DIR;
 
-use super::{Branch, ComHash, Commit, DirHash, DirObject, FileHash, FileObject};
+use super::{Branch, ComHash, Commit, DirHash, DirObject, FileHash, FileObject, ObjectState};
 
 #[derive(Serialize, Deserialize)]
 pub struct Repo {
@@ -39,7 +39,16 @@ pub enum HeadState {
 impl Repo {
     pub fn load() -> Result<Self> {
         let file = File::open(".mid/repo.json")?;
-        Ok(serde_json::from_reader(file)?)
+
+        let repo: Self = serde_json::from_reader(file)?;
+
+        if let HeadState::Branch(branch) = &repo.head {
+            if !repo.branches.contains_key(branch) {
+                bail!("Head branch '{}' not in repository.", branch);
+            }
+        }
+
+        Ok(repo)
     }
 
     pub fn get_dir(&self, hash: &DirHash) -> &DirObject {
