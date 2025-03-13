@@ -6,7 +6,7 @@ use super::{DirHash, ObjectState};
 
 #[derive(Hash, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct ComHash(#[serde(with = "hex::serde")] pub [u8; 16]);
+pub struct ComHash(#[serde(with = "hex::serde")] pub [u8; 20]);
 
 #[derive(Serialize, Deserialize)]
 pub struct Commit {
