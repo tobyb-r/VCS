@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
+use sha1::{Digest, Sha1};
 
 use super::ObjectState;
 
@@ -49,6 +50,16 @@ impl DirObject {
 
     // hash object
     pub fn hash(&self) -> DirHash {
-        unimplemented!()
+        let mut hasher = Sha1::new();
+
+        for (key, value) in self.objs.iter() {
+            hasher.update(key);
+            hasher.update(match value {
+                Object::File(x) => x.0,
+                Object::Dir(x) => x.0,
+            });
+        }
+
+        return DirHash(hasher.finalize()[..].try_into().unwrap());
     }
 }

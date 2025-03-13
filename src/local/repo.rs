@@ -55,7 +55,7 @@ impl Repo {
         db.create(".mid/objects/files")?;
         db.create(".mid/objects/dirs")?;
 
-        let main = Branch::new(ComHash([0; 32]));
+        let main = Branch::new(ComHash([0; 16]));
         let mut branches = HashMap::new();
         branches.insert("main".to_string(), main);
 
@@ -71,7 +71,7 @@ impl Repo {
     }
 
     pub fn get_dir(&self, hash: &DirHash) -> &DirObject {
-        // SAFETY: access is unique because we never references to the hashmap
+        // SAFETY: access is unique because we never leak references to the hashmap
         // SAFETY: references will stay valid because of pin
         unsafe { &mut *self.dirs.get() }
             .entry(*hash)
@@ -79,7 +79,7 @@ impl Repo {
     }
 
     pub fn get_file(&self, hash: &FileHash) -> &FileObject {
-        // SAFETY: access is unique because we never references to the hashmap
+        // SAFETY: access is unique because we never leak references to the hashmap
         // SAFETY: references will stay valid because of pin
         unsafe { &mut *self.files.get() }
             .entry(*hash)
@@ -87,7 +87,7 @@ impl Repo {
     }
 
     pub fn get_commit(&self, hash: &ComHash) -> &Commit {
-        // SAFETY: access is unique because we never references to the hashmap
+        // SAFETY: access is unique because we never leak references to the hashmap
         // SAFETY: references will stay valid because of pin
         unsafe { &mut *self.commits.get() }
             .entry(*hash)

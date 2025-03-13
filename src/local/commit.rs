@@ -1,14 +1,15 @@
+use hex::ToHex;
 use serde::{Deserialize, Serialize};
+use sha1::{Digest, Sha1};
 
 use super::{DirHash, ObjectState};
 
 #[derive(Hash, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct ComHash(#[serde(with = "hex::serde")] pub [u8; 32]);
+pub struct ComHash(#[serde(with = "hex::serde")] pub [u8; 16]);
 
 pub struct Commit {
     msg: String,
-    hash: ComHash,
     prev: ComHash,
     objs: DirHash,
     state: ObjectState,
@@ -22,6 +23,9 @@ impl Commit {
 
     // hash object
     pub fn hash(&self) -> ComHash {
-        unimplemented!()
+        let mut hasher = Sha1::new();
+        hasher.update(self.prev.0);
+        hasher.update(self.objs.0);
+        return ComHash(hasher.finalize()[..].try_into().unwrap());
     }
 }
