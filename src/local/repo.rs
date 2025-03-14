@@ -11,7 +11,9 @@ use serde_json;
 
 use crate::DIR;
 
-use super::{Branch, ComHash, Commit, DirHash, DirObject, FileHash, FileObject, ObjectState};
+use super::{
+    Branch, ComHash, Commit, DirHash, DirObject, FileHash, FileObject, FileState, ObjectState,
+};
 
 #[derive(Serialize, Deserialize)]
 pub struct Repo {
@@ -112,7 +114,9 @@ impl Repo {
     }
 
     pub fn make_commit(&mut self) {
-        let newdir = DirObject::new();
+        let newfile = FileObject::new();
+        let filehash = super::hash_file(File::open("README.md").unwrap()).unwrap();
+        let newdir = DirObject::new(filehash);
         let new = Commit::new("new".to_string(), self.get_head(), newdir.hash());
 
         match &self.head {
@@ -124,6 +128,7 @@ impl Repo {
             }
         }
 
+        self.files.get_mut().insert(filehash, Box::pin(newfile));
         self.dirs.get_mut().insert(newdir.hash(), Box::pin(newdir));
         self.commits.get_mut().insert(new.hash(), Box::pin(new));
     }
@@ -132,7 +137,7 @@ impl Repo {
         let file = File::create(".mid/repo.json")?;
         serde_json::to_writer_pretty(file, self)?;
 
-        // write objects
+        // write commits
         // SAFETY: we dont mutate the unsafecell here
         for (key, value) in unsafe { &*self.commits.get() }.iter() {
             if let ObjectState::New = value.state {
@@ -145,7 +150,7 @@ impl Repo {
             }
         }
 
-        // write objects
+        // write dirs
         // SAFETY: we dont mutate the unsafecell here
         for (key, value) in unsafe { &*self.dirs.get() }.iter() {
             if let ObjectState::New = value.state {
@@ -155,6 +160,32 @@ impl Repo {
                 ))?;
 
                 serde_json::to_writer_pretty(com_file, &*value.as_ref())?;
+            }
+        }
+
+        // write files
+        // SAFETY: we dont mutate the unsafecell here
+        for (key, value) in unsafe { &*self.files.get() }.iter() {
+            if let FileState::New(path) = &value.state {
+                let mut db = DirBuilder::new();
+                db.recursive(true);
+
+                db.create(format!(
+                    ".mid/objects/files/{}/",
+                    key.0.encode_hex::<String>()
+                ))?;
+
+                let com_file = File::create(format!(
+                    ".mid/objects/files/{}/info.json",
+                    key.0.encode_hex::<String>()
+                ))?;
+
+                serde_json::to_writer_pretty(com_file, &*value.as_ref())?;
+
+                fs::copy(
+                    &path,
+                    format!(".mid/objects/files/{}/FILE", key.0.encode_hex::<String>()),
+                )?;
             }
         }
 

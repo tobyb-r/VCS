@@ -1,5 +1,7 @@
-use std::collections::HashMap;
+use std::fs::File;
+use std::{collections::HashMap, io};
 
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use sha1::{Digest, Sha1};
 
@@ -52,21 +54,31 @@ pub struct DirObject {
 }
 
 impl FileObject {
+    pub fn new() -> Self {
+        return Self {
+            refcount: 0,
+            state: FileState::New("README.md".to_string()),
+        };
+    }
     // load object from the repo directory using its hash
     pub fn from_hash(hash: &FileHash) -> Self {
         unimplemented!()
     }
+}
 
-    // hash object
-    pub fn hash(&self) -> FileHash {
-        unimplemented!()
-    }
+// hash object
+pub fn hash_file(mut file: File) -> Result<FileHash> {
+    let mut hasher = Sha1::new();
+
+    io::copy(&mut file, &mut hasher)?;
+
+    Ok(FileHash(hasher.finalize()[..].try_into().unwrap()))
 }
 
 impl DirObject {
-    pub fn new() -> Self {
+    pub fn new(filehash: FileHash) -> Self {
         let mut objs = HashMap::new();
-        objs.insert("default".to_string(), Object::File(FileHash([0; 20])));
+        objs.insert("default".to_string(), Object::File(filehash));
 
         return Self {
             objs,
