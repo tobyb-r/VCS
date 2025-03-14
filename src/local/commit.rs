@@ -13,6 +13,7 @@ pub struct Commit {
     pub msg: String,
     pub prev: ComHash,
     pub objs: DirHash,
+    pub refcount: i32,
     #[serde(skip)]
     pub state: ObjectState,
 }
@@ -23,6 +24,7 @@ impl Commit {
             msg,
             prev,
             objs,
+            refcount: 0,
             state: ObjectState::New,
         };
     }

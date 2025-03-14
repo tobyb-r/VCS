@@ -111,8 +111,9 @@ impl Repo {
         }
     }
 
-    pub fn commit(&mut self) {
-        let new = Commit::new("new".to_string(), self.get_head(), DirHash([0; 20]));
+    pub fn make_commit(&mut self) {
+        let newdir = DirObject::new();
+        let new = Commit::new("new".to_string(), self.get_head(), newdir.hash());
 
         match &self.head {
             HeadState::Branch(branch) => {
@@ -123,6 +124,7 @@ impl Repo {
             }
         }
 
+        self.dirs.get_mut().insert(newdir.hash(), Box::pin(newdir));
         self.commits.get_mut().insert(new.hash(), Box::pin(new));
     }
 
@@ -131,11 +133,24 @@ impl Repo {
         serde_json::to_writer_pretty(file, self)?;
 
         // write objects
-        // SAFETY: access is unique
+        // SAFETY: we dont mutate the unsafecell here
         for (key, value) in unsafe { &*self.commits.get() }.iter() {
             if let ObjectState::New = value.state {
                 let com_file = File::create(format!(
                     ".mid/objects/commits/{}.json",
+                    key.0.encode_hex::<String>()
+                ))?;
+
+                serde_json::to_writer_pretty(com_file, &*value.as_ref())?;
+            }
+        }
+
+        // write objects
+        // SAFETY: we dont mutate the unsafecell here
+        for (key, value) in unsafe { &*self.dirs.get() }.iter() {
+            if let ObjectState::New = value.state {
+                let com_file = File::create(format!(
+                    ".mid/objects/dirs/{}.json",
                     key.0.encode_hex::<String>()
                 ))?;
 

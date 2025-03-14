@@ -38,17 +38,17 @@ pub enum FileState {
 
 #[derive(Serialize, Deserialize)]
 pub struct FileObject {
-    refcount: i32,
+    pub refcount: i32,
     #[serde(skip)]
-    state: FileState,
+    pub state: FileState,
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct DirObject {
-    objs: HashMap<String, Object>,
-    refcount: i32,
+    pub objs: HashMap<String, Object>,
+    pub refcount: i32,
     #[serde(skip)]
-    state: ObjectState,
+    pub state: ObjectState,
 }
 
 impl FileObject {
@@ -64,6 +64,17 @@ impl FileObject {
 }
 
 impl DirObject {
+    pub fn new() -> Self {
+        let mut objs = HashMap::new();
+        objs.insert("default".to_string(), Object::File(FileHash([0; 20])));
+
+        return Self {
+            objs,
+            refcount: 0,
+            state: ObjectState::New,
+        };
+    }
+
     // load object from the repo directory using its hash
     pub fn from_hash(hash: &DirHash) -> Self {
         unimplemented!()
