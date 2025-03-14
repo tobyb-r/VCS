@@ -20,13 +20,13 @@ pub struct Commit {
 
 impl Commit {
     pub fn new(msg: String, prev: ComHash, objs: DirHash) -> Self {
-        return Self {
+        Self {
             msg,
             prev,
             objs,
             refcount: 0,
             state: ObjectState::New,
-        };
+        }
     }
 
     // load object from the repo directory using its hash
@@ -39,6 +39,6 @@ impl Commit {
         let mut hasher = Sha1::new();
         hasher.update(self.prev.0);
         hasher.update(self.objs.0);
-        return ComHash(hasher.finalize()[..].try_into().unwrap());
+        ComHash(hasher.finalize()[..].try_into().unwrap())
     }
 }

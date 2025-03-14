@@ -15,6 +15,7 @@ pub struct DirHash(#[serde(with = "hex::serde")] pub [u8; 20]);
 #[serde(transparent)]
 pub struct FileHash(#[serde(with = "hex::serde")] pub [u8; 20]);
 
+// type objects in the file tree
 #[derive(Serialize, Deserialize)]
 pub enum Object {
     File(FileHash),
@@ -45,20 +46,12 @@ pub struct FileObject {
     pub state: FileState,
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct DirObject {
-    pub objs: HashMap<String, Object>,
-    pub refcount: i32,
-    #[serde(skip)]
-    pub state: ObjectState,
-}
-
 impl FileObject {
     pub fn new() -> Self {
-        return Self {
+        Self {
             refcount: 0,
             state: FileState::New("README.md".to_string()),
-        };
+        }
     }
     // load object from the repo directory using its hash
     pub fn from_hash(hash: &FileHash) -> Self {
@@ -66,7 +59,7 @@ impl FileObject {
     }
 }
 
-// hash object
+// hash file in working tree
 pub fn hash_file(mut file: File) -> Result<FileHash> {
     let mut hasher = Sha1::new();
 
@@ -75,16 +68,24 @@ pub fn hash_file(mut file: File) -> Result<FileHash> {
     Ok(FileHash(hasher.finalize()[..].try_into().unwrap()))
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct DirObject {
+    pub objs: HashMap<String, Object>,
+    pub refcount: i32,
+    #[serde(skip)]
+    pub state: ObjectState,
+}
+
 impl DirObject {
     pub fn new(filehash: FileHash) -> Self {
         let mut objs = HashMap::new();
         objs.insert("default".to_string(), Object::File(filehash));
 
-        return Self {
+        Self {
             objs,
             refcount: 0,
             state: ObjectState::New,
-        };
+        }
     }
 
     // load object from the repo directory using its hash
@@ -96,7 +97,7 @@ impl DirObject {
     pub fn hash(&self) -> DirHash {
         let mut hasher = Sha1::new();
 
-        for (key, value) in self.objs.iter() {
+        for (key, value) in &self.objs {
             hasher.update(key);
             hasher.update(match value {
                 Object::File(x) => x.0,
@@ -104,6 +105,6 @@ impl DirObject {
             });
         }
 
-        return DirHash(hasher.finalize()[..].try_into().unwrap());
+        DirHash(hasher.finalize()[..].try_into().unwrap())
     }
 }

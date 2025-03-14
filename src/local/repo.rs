@@ -7,7 +7,6 @@ use std::{cell::UnsafeCell, fs};
 use anyhow::{bail, Result};
 use hex::ToHex;
 use serde::{Deserialize, Serialize};
-use serde_json;
 
 use crate::DIR;
 
@@ -40,6 +39,7 @@ pub enum HeadState {
 }
 
 impl Repo {
+    // load repo from storage
     pub fn load() -> Result<Self> {
         let file = File::open(".mid/repo.json")?;
 
@@ -54,15 +54,14 @@ impl Repo {
         Ok(repo)
     }
 
+    // initialize repository
     pub fn init() -> Result<Self> {
         if fs::exists(DIR)? {
-            bail!("Already in directory");
+            bail!("Already in repository");
         }
 
         let mut db = DirBuilder::new();
         db.recursive(true);
-        // db.create(".mid")?;
-        // db.create(".mid/objects")?;
         db.create(".mid/objects/commits")?;
         db.create(".mid/objects/files")?;
         db.create(".mid/objects/dirs")?;
@@ -82,6 +81,7 @@ impl Repo {
         })
     }
 
+    // get object from hashmap, load it from storage if it isn't there
     pub fn get_dir(&self, hash: &DirHash) -> &DirObject {
         // SAFETY: access is unique because we never leak references to the hashmap
         // SAFETY: references will stay valid because of pin
@@ -90,6 +90,7 @@ impl Repo {
             .or_insert_with_key(|hash| Box::pin(DirObject::from_hash(hash)))
     }
 
+    // get object from hashmap, load it from storage if it isn't there
     pub fn get_file(&self, hash: &FileHash) -> &FileObject {
         // SAFETY: access is unique because we never leak references to the hashmap
         // SAFETY: references will stay valid because of pin
@@ -98,6 +99,7 @@ impl Repo {
             .or_insert_with_key(|hash| Box::pin(FileObject::from_hash(hash)))
     }
 
+    // get object from hashmap, load it from storage if it isn't there
     pub fn get_commit(&self, hash: &ComHash) -> &Commit {
         // SAFETY: access is unique because we never leak references to the hashmap
         // SAFETY: references will stay valid because of pin
@@ -106,6 +108,7 @@ impl Repo {
             .or_insert_with_key(|hash| Box::pin(Commit::from_hash(hash)))
     }
 
+    // get the current head commit
     pub fn get_head(&self) -> ComHash {
         match &self.head {
             HeadState::Branch(name) => self.branches[name].head,
@@ -133,13 +136,14 @@ impl Repo {
         self.commits.get_mut().insert(new.hash(), Box::pin(new));
     }
 
+    // store any changes to the repo
     pub fn save(&self) -> Result<()> {
         let file = File::create(".mid/repo.json")?;
         serde_json::to_writer_pretty(file, self)?;
 
         // write commits
         // SAFETY: we dont mutate the unsafecell here
-        for (key, value) in unsafe { &*self.commits.get() }.iter() {
+        for (key, value) in unsafe { &*self.commits.get() } {
             if let ObjectState::New = value.state {
                 let com_file = File::create(format!(
                     ".mid/objects/commits/{}.json",
@@ -152,7 +156,7 @@ impl Repo {
 
         // write dirs
         // SAFETY: we dont mutate the unsafecell here
-        for (key, value) in unsafe { &*self.dirs.get() }.iter() {
+        for (key, value) in unsafe { &*self.dirs.get() } {
             if let ObjectState::New = value.state {
                 let com_file = File::create(format!(
                     ".mid/objects/dirs/{}.json",
@@ -165,7 +169,7 @@ impl Repo {
 
         // write files
         // SAFETY: we dont mutate the unsafecell here
-        for (key, value) in unsafe { &*self.files.get() }.iter() {
+        for (key, value) in unsafe { &*self.files.get() } {
             if let FileState::New(path) = &value.state {
                 let mut db = DirBuilder::new();
                 db.recursive(true);
@@ -183,7 +187,7 @@ impl Repo {
                 serde_json::to_writer_pretty(com_file, &*value.as_ref())?;
 
                 fs::copy(
-                    &path,
+                    path,
                     format!(".mid/objects/files/{}/FILE", key.0.encode_hex::<String>()),
                 )?;
             }

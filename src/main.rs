@@ -84,5 +84,5 @@ fn main() {
         }
     }
 
-    repo.save().expect("Failed to save changes to repository")
+    repo.save().expect("Failed to save changes to repository");
 }

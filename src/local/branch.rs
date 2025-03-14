@@ -9,6 +9,6 @@ pub struct Branch {
 
 impl Branch {
     pub fn new(head: ComHash) -> Self {
-        Self { head: head }
+        Self { head }
     }
 }
