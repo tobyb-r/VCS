@@ -1,8 +1,9 @@
 use core::net;
+use std::cell::UnsafeCell;
 use std::collections::HashMap;
+use std::fs;
 use std::fs::{DirBuilder, File};
 use std::pin::Pin;
-use std::{cell::UnsafeCell, fs};
 
 use anyhow::{bail, Result};
 use hex::ToHex;
@@ -28,11 +29,14 @@ pub struct Repo {
     dirs: UnsafeCell<HashMap<DirHash, Pin<Box<DirObject>>>>,
 
     // list of paths
-    pub stage: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default)]
+    pub stage: Vec<String>,
     pub head: HeadState,
 }
 
 #[derive(Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum HeadState {
     Branch(String),
     Commit(ComHash),
@@ -77,34 +81,34 @@ impl Repo {
             files: UnsafeCell::new(HashMap::new()),
             dirs: UnsafeCell::new(HashMap::new()),
             head: HeadState::Branch("main".to_string()),
-            stage: None,
+            stage: Vec::new(),
         })
     }
 
     // get object from hashmap, load it from storage if it isn't there
-    pub fn get_dir(&self, hash: &DirHash) -> &DirObject {
+    pub fn get_dir(&self, hash: DirHash) -> &DirObject {
         // SAFETY: access is unique because we never leak references to the hashmap
         // SAFETY: references will stay valid because of pin
         unsafe { &mut *self.dirs.get() }
-            .entry(*hash)
+            .entry(hash)
             .or_insert_with_key(|hash| Box::pin(DirObject::from_hash(hash)))
     }
 
     // get object from hashmap, load it from storage if it isn't there
-    pub fn get_file(&self, hash: &FileHash) -> &FileObject {
+    pub fn get_file(&self, hash: FileHash) -> &FileObject {
         // SAFETY: access is unique because we never leak references to the hashmap
         // SAFETY: references will stay valid because of pin
         unsafe { &mut *self.files.get() }
-            .entry(*hash)
+            .entry(hash)
             .or_insert_with_key(|hash| Box::pin(FileObject::from_hash(hash)))
     }
 
     // get object from hashmap, load it from storage if it isn't there
-    pub fn get_commit(&self, hash: &ComHash) -> &Commit {
+    pub fn get_commit(&self, hash: ComHash) -> &Commit {
         // SAFETY: access is unique because we never leak references to the hashmap
         // SAFETY: references will stay valid because of pin
         unsafe { &mut *self.commits.get() }
-            .entry(*hash)
+            .entry(hash)
             .or_insert_with_key(|hash| Box::pin(Commit::from_hash(hash)))
     }
 
@@ -116,7 +120,12 @@ impl Repo {
         }
     }
 
-    pub fn make_commit(&mut self) {
+    pub fn stage(&mut self, mut paths: Vec<String>) {
+        // TODO: validation
+        self.stage.append(&mut paths);
+    }
+
+    pub fn append_commit(&mut self) {
         let newfile = FileObject::new();
         let filehash = super::hash_file(File::open("README.md").unwrap()).unwrap();
         let newdir = DirObject::new(filehash);
@@ -145,10 +154,13 @@ impl Repo {
         // SAFETY: we dont mutate the unsafecell here
         for (key, value) in unsafe { &*self.commits.get() } {
             if let ObjectState::New = value.state {
-                let com_file = File::create(format!(
-                    ".mid/objects/commits/{}.json",
-                    key.0.encode_hex::<String>()
-                ))?;
+                let path = format!(".mid/objects/commits/{}.json", key.0.encode_hex::<String>());
+
+                if fs::exists(&path)? {
+                    continue;
+                }
+
+                let com_file = File::create(&path)?;
 
                 serde_json::to_writer_pretty(com_file, &*value.as_ref())?;
             }
@@ -158,10 +170,13 @@ impl Repo {
         // SAFETY: we dont mutate the unsafecell here
         for (key, value) in unsafe { &*self.dirs.get() } {
             if let ObjectState::New = value.state {
-                let com_file = File::create(format!(
-                    ".mid/objects/dirs/{}.json",
-                    key.0.encode_hex::<String>()
-                ))?;
+                let path = format!(".mid/objects/dirs/{}.json", key.0.encode_hex::<String>());
+
+                if fs::exists(&path)? {
+                    continue;
+                }
+
+                let com_file = File::create(&path)?;
 
                 serde_json::to_writer_pretty(com_file, &*value.as_ref())?;
             }
@@ -170,26 +185,24 @@ impl Repo {
         // write files
         // SAFETY: we dont mutate the unsafecell here
         for (key, value) in unsafe { &*self.files.get() } {
-            if let FileState::New(path) = &value.state {
+            if let FileState::New(inpath) = &value.state {
+                let path = format!(".mid/objects/files/{}", key.0.encode_hex::<String>());
+
+                if fs::exists(&path)? {
+                    continue;
+                }
+
                 let mut db = DirBuilder::new();
                 db.recursive(true);
 
-                db.create(format!(
-                    ".mid/objects/files/{}/",
-                    key.0.encode_hex::<String>()
-                ))?;
+                db.create(&path)?;
 
-                let com_file = File::create(format!(
-                    ".mid/objects/files/{}/info.json",
-                    key.0.encode_hex::<String>()
-                ))?;
+                let com_file = File::create(format!("{}/info.json", &path))?;
 
                 serde_json::to_writer_pretty(com_file, &*value.as_ref())?;
 
-                fs::copy(
-                    path,
-                    format!(".mid/objects/files/{}/FILE", key.0.encode_hex::<String>()),
-                )?;
+                // TODO compression
+                fs::copy(inpath, format!("{}/FILE", &path))?;
             }
         }
 

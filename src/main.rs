@@ -41,11 +41,12 @@ fn main() {
         }
         "stage" => {
             println!("Staging file");
+            repo.stage(args[2..].into());
             // <path>+
         }
         "commit" => {
             // <msg>
-            repo.make_commit();
+            repo.append_commit();
             println!("Commiting changes");
         }
         "branch" => {
