@@ -45,7 +45,7 @@ fn main() {
         }
         "commit" => {
             // <msg>
-            repo.commit();
+            repo.make_commit();
             println!("Commiting changes");
         }
         "branch" => {
