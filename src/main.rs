@@ -6,8 +6,6 @@ use local::*;
 
 use std::env;
 
-const DIR: &str = ".mid";
-
 fn main() {
     let args = env::args().collect::<Vec<String>>();
 

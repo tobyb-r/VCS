@@ -26,20 +26,6 @@ impl Commit {
         }
     }
 
-    // load object from the repo directory using its hash
-    pub fn from_hash(hash: ComHash) -> Self {
-        if hash.0 == [0; 20] {
-            Self {
-                msg: "init".to_string(),
-                prev: ComHash([0; 20]),
-                objs: DirHash([0; 20]),
-                state: ObjectState::Existing,
-            }
-        } else {
-            todo!() // load object from storage
-        }
-    }
-
     // hash object
     pub fn hash(&self) -> ComHash {
         let mut hasher = Sha1::new();

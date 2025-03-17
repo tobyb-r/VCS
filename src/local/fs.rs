@@ -18,7 +18,7 @@ pub struct DirHash(#[serde(with = "hex::serde")] pub [u8; 20]);
 #[serde(transparent)]
 pub struct FileHash(#[serde(with = "hex::serde")] pub [u8; 20]);
 
-// type objects in the file tree
+// type of objects in the file tree
 #[derive(Serialize, Deserialize)]
 pub enum Object {
     File(FileHash),
@@ -51,13 +51,9 @@ impl FileObject {
             state: FileState::New(path.as_ref().to_path_buf()),
         }
     }
-    // load object from the repo directory using its hash
-    pub fn from_hash(hash: FileHash) -> Self {
-        unimplemented!()
-    }
 }
 
-// hash file in working tree
+// find hash of file in working tree
 pub fn hash_file(path: impl AsRef<Path>) -> Result<FileHash> {
     let mut file = File::open(path)?;
     let mut hasher = Sha1::new();
@@ -71,6 +67,8 @@ pub fn get_permissions(file: File) {
     todo!()
 }
 
+// module for serializing and deserializing the dir objects
+// serde doesn't support OsString on its own but String is annoying to work with
 mod sd {
     use serde::{ser::SerializeMap, Deserialize, Deserializer, Serializer};
     use std::{collections::HashMap, ffi::OsString};
@@ -118,18 +116,6 @@ impl DirObject {
         Self {
             objs,
             state: ObjectState::New,
-        }
-    }
-
-    // load object from the repo directory using its hash
-    pub fn from_hash(hash: DirHash) -> Self {
-        if hash.0 == [0; 20] {
-            Self {
-                objs: HashMap::new(),
-                state: ObjectState::Existing,
-            }
-        } else {
-            todo!() // load object from storage
         }
     }
 
