@@ -1,24 +1,26 @@
-use core::net;
-use std::cell::UnsafeCell;
-use std::collections::HashMap;
-use std::fs;
-use std::fs::{DirBuilder, File};
-use std::pin::Pin;
-
 use anyhow::{bail, Result};
 use hex::ToHex;
 use serde::{Deserialize, Serialize};
+use std::cell::UnsafeCell;
+use std::collections::HashMap;
+use std::ffi::OsString;
+use std::fs;
+use std::fs::{DirBuilder, File};
+use std::path::Path;
+use std::pin::Pin;
 
 use crate::DIR;
 
 use super::{
-    Branch, ComHash, Commit, DirHash, DirObject, FileHash, FileObject, FileState, ObjectState,
+    hash_file, Branch, ComHash, Commit, DirHash, DirObject, FileHash, FileObject, FileState,
+    Object, ObjectState,
 };
 
 #[derive(Serialize, Deserialize)]
 pub struct Repo {
-    pub remote: Option<String>,
+    pub remote: Option<String>, // path of remote
     pub branches: HashMap<String, Branch>,
+    pub head: HeadState,
 
     // lazily loaded store of objects
     #[serde(skip)]
@@ -28,11 +30,10 @@ pub struct Repo {
     #[serde(skip)]
     dirs: UnsafeCell<HashMap<DirHash, Pin<Box<DirObject>>>>,
 
-    // list of paths
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    // staging area
+    #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
-    pub stage: Vec<String>,
-    pub head: HeadState,
+    index: Option<DirHash>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -81,7 +82,7 @@ impl Repo {
             files: UnsafeCell::new(HashMap::new()),
             dirs: UnsafeCell::new(HashMap::new()),
             head: HeadState::Branch("main".to_string()),
-            stage: Vec::new(),
+            index: None,
         })
     }
 
@@ -91,7 +92,7 @@ impl Repo {
         // SAFETY: references will stay valid because of pin
         unsafe { &mut *self.dirs.get() }
             .entry(hash)
-            .or_insert_with_key(|hash| Box::pin(DirObject::from_hash(hash)))
+            .or_insert_with(|| Box::pin(DirObject::from_hash(hash)))
     }
 
     // get object from hashmap, load it from storage if it isn't there
@@ -100,7 +101,7 @@ impl Repo {
         // SAFETY: references will stay valid because of pin
         unsafe { &mut *self.files.get() }
             .entry(hash)
-            .or_insert_with_key(|hash| Box::pin(FileObject::from_hash(hash)))
+            .or_insert_with(|| Box::pin(FileObject::from_hash(hash)))
     }
 
     // get object from hashmap, load it from storage if it isn't there
@@ -109,7 +110,7 @@ impl Repo {
         // SAFETY: references will stay valid because of pin
         unsafe { &mut *self.commits.get() }
             .entry(hash)
-            .or_insert_with_key(|hash| Box::pin(Commit::from_hash(hash)))
+            .or_insert_with(|| Box::pin(Commit::from_hash(hash)))
     }
 
     // get the current head commit
@@ -120,30 +121,111 @@ impl Repo {
         }
     }
 
-    pub fn stage(&mut self, mut paths: Vec<String>) {
-        // TODO: validation
-        self.stage.append(&mut paths);
+    fn new_dir(&mut self, objs: HashMap<OsString, Object>) -> DirHash {
+        let dir = DirObject {
+            objs,
+            state: ObjectState::New,
+        };
+        let hash = dir.hash();
+        self.dirs.get_mut().insert(hash, Box::pin(dir));
+        hash
     }
 
-    pub fn append_commit(&mut self) {
-        let newfile = FileObject::new();
-        let filehash = super::hash_file(File::open("README.md").unwrap()).unwrap();
-        let newdir = DirObject::new(filehash);
-        let new = Commit::new("new".to_string(), self.get_head(), newdir.hash());
+    fn new_commit(&mut self, msg: String, prev: ComHash, objs: DirHash) -> ComHash {
+        let commit = Commit {
+            msg,
+            prev,
+            objs,
+            state: ObjectState::New,
+        };
+        let hash = commit.hash();
+        self.commits.get_mut().insert(hash, Box::pin(commit));
+        hash
+    }
 
-        match &self.head {
-            HeadState::Branch(branch) => {
-                self.branches.get_mut(branch).unwrap().head = new.hash();
-            }
-            HeadState::Commit(comhash) => {
-                self.head = HeadState::Commit(new.hash());
+    // stage entire folder
+    // TODO: only stage necessary
+    pub fn index_dir(&mut self, path: impl AsRef<Path>) -> Result<DirHash> {
+        let head_rev = self.get_dir(self.get_commit(self.get_head()).objs);
+        let mut objs = HashMap::new();
+
+        for entry in fs::read_dir(path)? {
+            let entry = entry?;
+
+            if entry.metadata()?.is_file() {
+                let hash = hash_file(entry.path())?;
+                self.files.get_mut().insert(
+                    hash,
+                    Box::pin(FileObject::new(entry.path().into_os_string())),
+                );
+
+                objs.insert(entry.file_name(), Object::File(hash));
+            } else {
+                // is dir
+                let hash = self.index_dir(entry.path().as_os_str())?;
+                objs.insert(entry.file_name(), Object::Dir(hash));
             }
         }
 
-        self.files.get_mut().insert(filehash, Box::pin(newfile));
-        self.dirs.get_mut().insert(newdir.hash(), Box::pin(newdir));
-        self.commits.get_mut().insert(new.hash(), Box::pin(new));
+        Ok(self.new_dir(objs))
     }
+
+    // add list of paths to index
+    pub fn stage(&mut self, paths: Vec<String>) -> Result<()> {
+        self.index = Some(self.index_dir("src")?);
+
+        return Ok(());
+
+        // recursively iterate through directory entries
+        // don't add files that arent in the paths or haven't changed
+        // maybe use trie
+
+        // TODO: finish this
+        todo!();
+    }
+
+    pub fn commit_staged(&mut self, msg: String) -> Result<()> {
+        let Some(index) = self.index.take() else {
+            bail!("Index empty")
+        };
+
+        let new_head = self.new_commit(msg, self.get_head(), index);
+
+        self.append_commit(new_head);
+
+        Ok(())
+    }
+
+    pub fn append_commit(&mut self, new_head: ComHash) {
+        match &self.head {
+            HeadState::Commit(comhash) => {
+                self.head = HeadState::Commit(new_head);
+            }
+            HeadState::Branch(branch) => {
+                *self.branches.get_mut(branch).unwrap() = Branch { head: new_head }
+            }
+        }
+    }
+
+    // pub fn append_commit(&mut self) {
+    //     let newfile = FileObject::new();
+    //     let filehash = super::hash_file(File::open("README.md").unwrap()).unwrap();
+    //     let newdir = DirObject::new(filehash);
+    //     let new = Commit::new("new".to_string(), self.get_head(), newdir.hash());
+
+    //     match &self.head {
+    //         HeadState::Branch(branch) => {
+    //             self.branches.get_mut(branch).unwrap().head = new.hash();
+    //         }
+    //         HeadState::Commit(comhash) => {
+    //             self.head = HeadState::Commit(new.hash());
+    //         }
+    //     }
+
+    //     self.files.get_mut().insert(filehash, Box::pin(newfile));
+    //     self.dirs.get_mut().insert(newdir.hash(), Box::pin(newdir));
+    //     self.commits.get_mut().insert(new.hash(), Box::pin(new));
+    // }
 
     // store any changes to the repo
     pub fn save(&self) -> Result<()> {
@@ -162,7 +244,7 @@ impl Repo {
 
                 let com_file = File::create(&path)?;
 
-                serde_json::to_writer_pretty(com_file, &*value.as_ref())?;
+                serde_json::to_writer_pretty(com_file, &**value)?;
             }
         }
 
@@ -178,7 +260,7 @@ impl Repo {
 
                 let com_file = File::create(&path)?;
 
-                serde_json::to_writer_pretty(com_file, &*value.as_ref())?;
+                serde_json::to_writer_pretty(com_file, &**value)?;
             }
         }
 
@@ -199,7 +281,7 @@ impl Repo {
 
                 let com_file = File::create(format!("{}/info.json", &path))?;
 
-                serde_json::to_writer_pretty(com_file, &*value.as_ref())?;
+                serde_json::to_writer_pretty(com_file, &**value)?;
 
                 // TODO compression
                 fs::copy(inpath, format!("{}/FILE", &path))?;

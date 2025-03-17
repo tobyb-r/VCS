@@ -1,4 +1,7 @@
+use std::ffi::OsString;
 use std::fs::File;
+use std::os::unix::ffi::OsStrExt;
+use std::path::{Path, PathBuf};
 use std::{collections::HashMap, io};
 
 use anyhow::Result;
@@ -31,36 +34,32 @@ pub enum FileState {
     Existing,
     // new object that needs to be stored
     // field contains path that the file needs to be stored from
-    New(String),
-    // info about object changed and needs to be stored in memory
-    // rn the only thing that can change is the refcount
-    Updated,
-    // object has been marked to be deleted
-    Deleted,
+    New(PathBuf),
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct FileObject {
-    pub refcount: i32,
+    pub permissions: u32,
     #[serde(skip)]
     pub state: FileState,
 }
 
 impl FileObject {
-    pub fn new() -> Self {
+    pub fn new(path: impl AsRef<Path>) -> Self {
         Self {
-            refcount: 0,
-            state: FileState::New("README.md".to_string()),
+            permissions: 0,
+            state: FileState::New(path.as_ref().to_path_buf()),
         }
     }
     // load object from the repo directory using its hash
-    pub fn from_hash(hash: &FileHash) -> Self {
+    pub fn from_hash(hash: FileHash) -> Self {
         unimplemented!()
     }
 }
 
 // hash file in working tree
-pub fn hash_file(mut file: File) -> Result<FileHash> {
+pub fn hash_file(path: impl AsRef<Path>) -> Result<FileHash> {
+    let mut file = File::open(path)?;
     let mut hasher = Sha1::new();
 
     io::copy(&mut file, &mut hasher)?;
@@ -68,10 +67,45 @@ pub fn hash_file(mut file: File) -> Result<FileHash> {
     Ok(FileHash(hasher.finalize()[..].try_into().unwrap()))
 }
 
+pub fn get_permissions(file: File) {
+    todo!()
+}
+
+mod sd {
+    use serde::{ser::SerializeMap, Deserialize, Deserializer, Serializer};
+    use std::{collections::HashMap, ffi::OsString};
+
+    use super::Object;
+
+    pub fn serialize<S>(map: &HashMap<OsString, Object>, ser: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut sermap = ser.serialize_map(Some(map.len()))?;
+
+        for (k, v) in map {
+            sermap.serialize_entry(k.to_str().unwrap(), v)?;
+        }
+
+        sermap.end()
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<HashMap<OsString, Object>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        // Deserialize the string as a regular string first
+        let s: HashMap<String, Object> = Deserialize::deserialize(deserializer)?;
+
+        // Convert the string into an OsString
+        Ok(s.into_iter().map(|(k, v)| (k.into(), v)).collect())
+    }
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct DirObject {
-    pub objs: HashMap<String, Object>,
-    pub refcount: i32,
+    #[serde(with = "sd")]
+    pub objs: HashMap<OsString, Object>,
     #[serde(skip)]
     pub state: ObjectState,
 }
@@ -79,18 +113,24 @@ pub struct DirObject {
 impl DirObject {
     pub fn new(filehash: FileHash) -> Self {
         let mut objs = HashMap::new();
-        objs.insert("default".to_string(), Object::File(filehash));
+        objs.insert("default".to_string().into(), Object::File(filehash));
 
         Self {
             objs,
-            refcount: 0,
             state: ObjectState::New,
         }
     }
 
     // load object from the repo directory using its hash
-    pub fn from_hash(hash: &DirHash) -> Self {
-        unimplemented!()
+    pub fn from_hash(hash: DirHash) -> Self {
+        if hash.0 == [0; 20] {
+            Self {
+                objs: HashMap::new(),
+                state: ObjectState::Existing,
+            }
+        } else {
+            todo!() // load object from storage
+        }
     }
 
     // hash object
@@ -98,7 +138,7 @@ impl DirObject {
         let mut hasher = Sha1::new();
 
         for (key, value) in &self.objs {
-            hasher.update(key);
+            hasher.update(key.as_bytes());
             hasher.update(match value {
                 Object::File(x) => x.0,
                 Object::Dir(x) => x.0,

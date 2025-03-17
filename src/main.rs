@@ -1,12 +1,10 @@
 #![allow(dead_code)]
 #![allow(unused_variables)]
-#![allow(unused_imports)]
+// #![allow(unused_imports)]
 mod local;
 use local::*;
 
 use std::env;
-
-use anyhow::{Context, Result};
 
 const DIR: &str = ".mid";
 
@@ -41,12 +39,13 @@ fn main() {
         }
         "stage" => {
             println!("Staging file");
-            repo.stage(args[2..].into());
+
+            repo.stage(args[2..].into()).unwrap();
             // <path>+
         }
         "commit" => {
             // <msg>
-            repo.append_commit();
+            repo.commit_staged(args[2].clone()).unwrap();
             println!("Commiting changes");
         }
         "branch" => {

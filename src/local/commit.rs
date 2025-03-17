@@ -1,4 +1,3 @@
-use hex::ToHex;
 use serde::{Deserialize, Serialize};
 use sha1::{Digest, Sha1};
 
@@ -13,7 +12,6 @@ pub struct Commit {
     pub msg: String,
     pub prev: ComHash,
     pub objs: DirHash,
-    pub refcount: i32,
     #[serde(skip)]
     pub state: ObjectState,
 }
@@ -24,14 +22,22 @@ impl Commit {
             msg,
             prev,
             objs,
-            refcount: 0,
             state: ObjectState::New,
         }
     }
 
     // load object from the repo directory using its hash
-    pub fn from_hash(hash: &ComHash) -> Self {
-        unimplemented!()
+    pub fn from_hash(hash: ComHash) -> Self {
+        if hash.0 == [0; 20] {
+            Self {
+                msg: "init".to_string(),
+                prev: ComHash([0; 20]),
+                objs: DirHash([0; 20]),
+                state: ObjectState::Existing,
+            }
+        } else {
+            todo!() // load object from storage
+        }
     }
 
     // hash object
