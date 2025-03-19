@@ -1,12 +1,12 @@
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 use hex::ToHex;
 use serde::{Deserialize, Serialize};
 use std::cell::UnsafeCell;
 use std::collections::HashMap;
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::fs;
 use std::fs::{DirBuilder, File};
-use std::path::Path;
+use std::path::{Components, Path, PathBuf};
 use std::pin::Pin;
 
 use super::{
@@ -29,13 +29,11 @@ pub struct Repo {
     dirs: UnsafeCell<HashMap<DirHash, Pin<Box<DirObject>>>>,
 
     // staging area
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(default)]
     index: Option<DirHash>,
 }
 
 #[derive(Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "snake_case")]
 pub enum HeadState {
     Branch(String),
     Commit(ComHash),
@@ -92,7 +90,16 @@ impl Repo {
         // SAFETY: references will stay valid because of pin
         unsafe { &mut *self.dirs.get() }
             .entry(hash)
-            .or_insert_with(|| Box::pin(self.dir_from_hash(hash)))
+            // TODO: handle this error properly
+            .or_insert_with(|| {
+                Box::pin(
+                    self.dir_from_hash(hash)
+                        .with_context(|| {
+                            format!("Failed loading dir {}", hash.0.encode_hex::<String>())
+                        })
+                        .unwrap(),
+                )
+            })
     }
 
     // get object from hashmap, load it from storage if it isn't there
@@ -110,7 +117,16 @@ impl Repo {
         // SAFETY: references will stay valid because of pin
         unsafe { &mut *self.commits.get() }
             .entry(hash)
-            .or_insert_with(|| Box::pin(self.commit_from_hash(hash)))
+            // TODO: handle this error properly
+            .or_insert_with(|| {
+                Box::pin(
+                    self.commit_from_hash(hash)
+                        .with_context(|| {
+                            format!("Failed loading commit {}", hash.0.encode_hex::<String>())
+                        })
+                        .unwrap(),
+                )
+            })
     }
 
     // get the current head commit
@@ -129,7 +145,7 @@ impl Repo {
             state: ObjectState::New,
         };
         let hash = dir.hash();
-        self.dirs.get_mut().insert(hash, Box::pin(dir));
+        self.dirs.get_mut().entry(hash).or_insert(Box::pin(dir));
         hash
     }
 
@@ -143,34 +159,56 @@ impl Repo {
             state: ObjectState::New,
         };
         let hash = commit.hash();
-        self.commits.get_mut().insert(hash, Box::pin(commit));
+        self.commits
+            .get_mut()
+            .entry(hash)
+            .or_insert(Box::pin(commit));
         hash
     }
 
     // load object from the repo directory using its hash
-    pub fn commit_from_hash(&self, hash: ComHash) -> Commit {
+    pub fn commit_from_hash(&self, hash: ComHash) -> Result<Commit> {
         // [0;20] represents hash of commit 0
         if hash.0 == [0; 20] {
-            Commit {
+            Ok(Commit {
                 msg: "init".to_string(),
                 prev: ComHash([0; 20]),
                 objs: DirHash([0; 20]),
                 state: ObjectState::Existing,
-            }
+            })
         } else {
-            todo!() // load object from storage
+            let path = format!(
+                ".mid/objects/commits/{}.json",
+                hash.0.encode_hex::<String>()
+            );
+
+            if !fs::exists(&path)? {
+                bail!("File doesn't exist");
+            }
+
+            let file = File::open(path)?;
+
+            Ok(serde_json::from_reader(file)?)
         }
     }
 
     // load object from the repo directory using its hash
-    pub fn dir_from_hash(&self, hash: DirHash) -> DirObject {
+    pub fn dir_from_hash(&self, hash: DirHash) -> Result<DirObject> {
         if hash.0 == [0; 20] {
-            DirObject {
+            Ok(DirObject {
                 objs: HashMap::new(),
                 state: ObjectState::Existing,
-            }
+            })
         } else {
-            todo!() // load object from storage
+            let path = format!(".mid/objects/dirs/{}.json", hash.0.encode_hex::<String>());
+
+            if !fs::exists(&path)? {
+                bail!("File doesn't exist");
+            }
+
+            let file = File::open(path)?;
+
+            Ok(serde_json::from_reader(file)?)
         }
     }
 
@@ -179,49 +217,112 @@ impl Repo {
         unimplemented!()
     }
 
-    // stage entire folder
-    pub fn index_dir(&mut self, path: impl AsRef<Path>) -> Result<DirHash> {
-        let head_rev = self.get_dir(self.get_commit(self.get_head()).objs);
-        let mut objs = HashMap::new();
-
-        for entry in fs::read_dir(path)? {
-            let entry = entry?;
-
-            if entry.metadata()?.is_file() {
-                let hash = hash_file(entry.path())?;
-                self.files.get_mut().insert(
-                    hash,
-                    Box::pin(FileObject::new(entry.path().into_os_string())),
-                );
-
-                objs.insert(entry.file_name(), Object::File(hash));
-            } else {
-                // is dir
-                let hash = self.index_dir(entry.path().as_os_str())?;
-                objs.insert(entry.file_name(), Object::Dir(hash));
+    // stage entire folder or file
+    pub fn index_path(&mut self, path: impl AsRef<Path>) -> Result<Option<Object>> {
+        if !path.as_ref().try_exists()? {
+            Ok(None) // ts doesn't exist
+        } else if path.as_ref().is_dir() {
+            let mut objs = HashMap::new();
+            for entry in fs::read_dir(path.as_ref())? {
+                let entry = entry?;
+                if let Some(object) = self.index_path(entry.path())? {
+                    objs.insert(entry.file_name(), object);
+                }
             }
-        }
 
-        Ok(self.new_dir(objs))
+            Ok(Some(Object::Dir(self.new_dir(objs))))
+        } else {
+            // path is file
+            let hash = hash_file(path.as_ref())?;
+            let file = FileObject::new(path.as_ref());
+            self.files.get_mut().insert(hash, Box::pin(file));
+            Ok(Some(Object::File(hash)))
+        }
     }
 
     // add list of paths to index
-    // TODO: only stage required paths
-    pub fn stage(&mut self, paths: Vec<String>) -> Result<()> {
-        self.index = Some(self.index_dir("src")?);
+    // TODO: support wildcards
+    pub fn index_paths(&mut self, paths: Vec<impl AsRef<Path>>) -> Result<()> {
+        let canon_dot = fs::canonicalize(".")?;
 
-        return Ok(());
+        // canonicalize all paths relative to current directory
+        // fixes any bs
+        let paths = paths
+            .iter()
+            .map::<Result<_>, _>(|path| {
+                Ok(fs::canonicalize(path)?
+                    .strip_prefix(&canon_dot)?
+                    .to_path_buf())
+            })
+            .collect::<Result<Vec<_>>>()?;
 
-        // recursively iterate through directory entries
-        // don't add files that arent in the paths
-        // maybe use trie
+        // convert paths into vec of (pathbuf, components iterator)
+        let paths = paths
+            .iter()
+            .map(|pb| (pb, pb.components()))
+            .collect::<Vec<(_, _)>>();
 
-        // TODO: finish this
-        todo!();
+        self.index = Some(
+            step(
+                self,
+                Some(self.index.unwrap_or(self.get_commit(self.get_head()).objs)),
+                paths,
+            )?
+            .unwrap()
+            .get_dir()
+            .unwrap(),
+        );
+
+        // recursively iterates through paths staged to be commited
+        pub fn step(
+            repo: &mut Repo,
+            // hash of the object in HEAD representing this dir
+            // None if we are in a new dir
+            dirhash: Option<DirHash>,
+            // all the paths in one subpath and the state of their component iterators
+            paths: Vec<(&PathBuf, Components<'_>)>,
+        ) -> Result<Option<Object>> {
+            // maps paths off this directory to the paths param for the recursive call
+            let mut subdirs: HashMap<&OsStr, Vec<(&PathBuf, Components<'_>)>> = HashMap::new();
+
+            for mut path in paths.into_iter() {
+                if let Some(comp) = path.1.next() {
+                    subdirs
+                        .entry(comp.as_os_str())
+                        .or_default()
+                        .push((path.0, path.1));
+                } else {
+                    // we were at the end of the path for this
+                    return repo.index_path(path.0);
+                };
+            }
+
+            // if their is an existing dirobject then we keep the objects it contained
+            let mut objs = if let Some(hash) = dirhash {
+                repo.get_dir(hash).objs.clone()
+            } else {
+                HashMap::new()
+            };
+
+            // recursive call on all subpaths
+            // insert new objects into the objs
+            for (k, v) in subdirs {
+                if let Some(new) = step(repo, objs.get(k).and_then(Object::get_dir), v)? {
+                    objs.insert(k.to_os_string(), new);
+                } else {
+                    // no file at that path
+                    objs.remove(k); // remove entry if it was in dir but was deleted
+                }
+            }
+
+            Ok(Some(Object::Dir(repo.new_dir(objs))))
+        }
+
+        Ok(())
     }
 
     // takes dirobj out of index and commits it
-    pub fn commit_staged(&mut self, msg: String) -> Result<()> {
+    pub fn commit_index(&mut self, msg: String) -> Result<()> {
         let Some(index) = self.index.take() else {
             bail!("Index empty")
         };
@@ -301,7 +402,7 @@ impl Repo {
 
                 serde_json::to_writer_pretty(com_file, &**value)?;
 
-                // TODO compression
+                // TODO: compression
                 fs::copy(inpath, format!("{}/FILE", &path))?;
             }
         }

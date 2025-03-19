@@ -19,10 +19,34 @@ pub struct DirHash(#[serde(with = "hex::serde")] pub [u8; 20]);
 pub struct FileHash(#[serde(with = "hex::serde")] pub [u8; 20]);
 
 // type of objects in the file tree
-#[derive(Serialize, Deserialize)]
+#[derive(Copy, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Object {
     File(FileHash),
     Dir(DirHash),
+}
+
+impl Object {
+    pub fn hash(&self) -> [u8; 20] {
+        match self {
+            Object::File(hash) => hash.0,
+            Object::Dir(hash) => hash.0,
+        }
+    }
+
+    pub fn get_dir(&self) -> Option<DirHash> {
+        match self {
+            Object::File(hash) => None,
+            Object::Dir(hash) => Some(*hash),
+        }
+    }
+
+    pub fn get_file(&self) -> Option<FileHash> {
+        match self {
+            Object::File(hash) => Some(*hash),
+            Object::Dir(hash) => None,
+        }
+    }
 }
 
 // state of a file in the file system
@@ -68,7 +92,7 @@ pub fn get_permissions(file: File) {
 }
 
 // module for serializing and deserializing the dir objects
-// serde doesn't support OsString on its own but String is annoying to work with
+// serde doesnt support OsString but String is annoying to work with
 mod sd {
     use serde::{ser::SerializeMap, Deserialize, Deserializer, Serializer};
     use std::{collections::HashMap, ffi::OsString};
@@ -125,10 +149,7 @@ impl DirObject {
 
         for (key, value) in &self.objs {
             hasher.update(key.as_bytes());
-            hasher.update(match value {
-                Object::File(x) => x.0,
-                Object::Dir(x) => x.0,
-            });
+            hasher.update(value.hash());
         }
 
         DirHash(hasher.finalize()[..].try_into().unwrap())

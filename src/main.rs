@@ -35,22 +35,24 @@ fn main() {
         "diff" => {
             println!("Difference of two commits");
         }
-        "stage" => {
-            println!("Staging file");
+        "add" => {
+            println!("Indexing");
 
-            repo.stage(args[2..].into()).unwrap();
+            repo.index_paths(args[2..].into()).unwrap();
             // <path>+
         }
         "commit" => {
             // <msg>
-            repo.commit_staged(args[2].clone()).unwrap();
+            repo.commit_index(args[2].clone()).unwrap();
             println!("Commiting changes");
         }
         "branch" => {
             println!("Branching");
             // -c --checkout <commit or branch name>
-            // -r --reset <commit or branch name>
+            //    --reset <commit or branch name>
+            //    --restore <commit or branch name>
             // -n --new <name>
+            //    --rename <name>
             // -d --delete <name>
         }
         "remote" => {
@@ -78,7 +80,7 @@ fn main() {
             println!("Help");
         }
         other => {
-            panic!("Unknown command {other}");
+            panic!("Unknown command '{other}'");
         }
     }
 
